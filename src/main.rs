@@ -1,3 +1,8 @@
+pub mod levels;
+
+use std::io;
+use std::io::Write; // <--- bring flush() into scope
+
 use ggez;
 use ggez::timer;
 use ggez::event::{self, EventHandler, KeyCode, MouseButton};
@@ -8,9 +13,7 @@ use ggez::conf::WindowMode;
 use ggez::audio::{self, SoundSource};
 use ggez::input::{keyboard, mouse};
 
-
 use std::collections::{HashMap};
-use rand::prelude::*;
 use std::path;
 use std::env;
 
@@ -24,8 +27,10 @@ struct Assets {
     colored_cells: Vec<ggez::graphics::Mesh>,
     music: audio::Source,
     font: graphics::Font,
-    text1: graphics::Text,
-    text2: graphics::Text,
+    text_start: graphics::Text,
+    text_alive: graphics::Text,
+    text_added: graphics::Text,
+    text_steps: graphics::Text,
 }
 
 impl Assets {
@@ -33,10 +38,20 @@ impl Assets {
         let colored_cells = create_colored_cells(ctx);
         let music = audio::Source::new(ctx, "/CocooN - Soul Splitter.mp3").unwrap();
         let font = graphics::Font::new(ctx, "/DejaVuSerifCondensed.ttf").unwrap();
-        let text1 = graphics::Text::new(("Start: 0", font, 20.0));
-        let text2 = graphics::Text::new(("Alive: 0", font, 20.0));
+        let text_start = graphics::Text::new(("Start: 0", font, 20.0));
+        let text_alive = graphics::Text::new(("Alive: 0", font, 20.0));
+        let text_added = graphics::Text::new(("Added: 0", font, 20.0));
+        let text_steps = graphics::Text::new(("Time steps: 0", font, 20.0));
 
-        Assets {colored_cells: colored_cells, music: music, font: font, text1: text1, text2: text2}
+        Assets {
+            colored_cells: colored_cells, 
+            music: music, 
+            font: font, 
+            text_added: text_added, 
+            text_alive: text_alive,
+            text_steps: text_steps,
+            text_start: text_start,
+        }
     }
 }
 
@@ -45,7 +60,6 @@ struct MainState {
     pub is_running: bool,
     pub one_turn: bool,
     pub assets: Assets,
-    pub start_offset: (f32, f32),
     pub camera: (f32, f32),
     pressed_keys: Vec<(KeyCode,bool)>,
     keys_up: HashMap<KeyCode, bool>,
@@ -53,13 +67,15 @@ struct MainState {
     mouse_pressed: bool,
     mouse_down: bool,
     mouse_position: (i64,i64),
+    added_counter: usize,
+    time_steps: usize,
 }
 
 impl MainState {
-    fn new(ctx: &mut Context, cells: HashMap<(i64,i64),usize>, offset: (f32,f32)) -> GameResult<MainState> {
+    fn new(ctx: &mut Context, cells: HashMap<(i64,i64),usize>) -> GameResult<MainState> {
         let mut assets = Assets::new(ctx);
-        assets.text1 = graphics::Text::new((format!("Start: {}", cells.len()), assets.font, 20.0));
-        assets.text2 = graphics::Text::new((format!("Alive: {}", cells.len()), assets.font, 20.0));
+        assets.text_start = graphics::Text::new((format!("Start: {}", cells.len()), assets.font, 20.0));
+        assets.text_alive = graphics::Text::new((format!("Alive: {}", cells.len()), assets.font, 20.0));
 
         let mut pressed_keys = vec![];
         let mut keys_up = HashMap::new();
@@ -70,13 +86,13 @@ impl MainState {
             keys_up.insert(key, false);
             keys_down.insert(key, false);
         }
+        let offset = calculate_offset(&cells, ctx);
 
         let state = MainState {
             alive: cells, 
             is_running: true, 
             one_turn: false,
             assets: assets,
-            start_offset: offset,
             camera: offset,
             pressed_keys: pressed_keys,
             keys_up: keys_up,
@@ -84,15 +100,31 @@ impl MainState {
             mouse_pressed: false,
             mouse_down: false,
             mouse_position: (0,0),
+            added_counter: 0,
+            time_steps: 0,
         };
         Ok(state)
     }
 
-    fn play_music(&mut self, _ctx: &mut Context) {
+    fn play_music(&mut self) {
         // "detached" sounds keep playing even after they are dropped
         self.assets.music.set_volume(0.8);
         self.assets.music.set_repeat(true);
         let _ = self.assets.music.play();
+    }
+
+    fn new_level(&mut self, level: HashMap<(i64,i64),usize>, ctx: &mut Context) {
+        self.assets.text_start = graphics::Text::new((format!("Start: {}", level.len()), self.assets.font, 20.0));
+        self.assets.text_alive = graphics::Text::new((format!("Alive: {}", level.len()), self.assets.font, 20.0));
+        self.assets.text_steps = graphics::Text::new((format!("Time steps: {}", self.time_steps), self.assets.font, 20.0));
+        self.assets.text_added = graphics::Text::new((format!("Added: {}", self.added_counter), self.assets.font, 20.0));
+
+        self.added_counter = 0;
+        self.time_steps = 0;
+        self.camera = calculate_offset(&level, ctx);
+
+        self.alive = level;
+        println!("cam: {:?}", self.camera);
     }
 
     fn tick(&mut self) {
@@ -119,7 +151,11 @@ impl MainState {
                 }
             }
             self.alive = next_gen;
-            self.assets.text2 = graphics::Text::new((format!("Alive: {}", self.alive.len()), self.assets.font, 20.0));
+            
+            self.time_steps += 1;
+            
+            self.assets.text_steps = graphics::Text::new((format!("Time steps: {}", self.time_steps), self.assets.font, 20.0));
+            self.assets.text_alive = graphics::Text::new((format!("Alive: {}", self.alive.len()), self.assets.font, 20.0));
         }
     }
 }
@@ -136,7 +172,11 @@ impl EventHandler for MainState {
         update_mouse_activity(ctx, self);
 
         if self.mouse_down {
-            self.alive.insert((self.mouse_position.0, self.mouse_position.1), 0);
+            if !self.alive.contains_key(&self.mouse_position) {
+                self.alive.insert(self.mouse_position, 0);
+                self.added_counter += 1;
+                self.assets.text_added = graphics::Text::new((format!("Added: {}", self.added_counter), self.assets.font, 20.0));
+            }
         }
 
         if self.keys_down[&KeyCode::Space] {
@@ -153,6 +193,33 @@ impl EventHandler for MainState {
         }
         if keyboard::is_key_pressed(ctx, KeyCode::D) {
             self.camera.0 -= CAM_CONSTANT;
+        }
+
+        if keyboard::is_key_pressed(ctx, KeyCode::Key1) {
+            let level = levels::get_level_1();
+            self.new_level(level, ctx);
+        }
+
+        if keyboard::is_key_pressed(ctx, KeyCode::Key2) {
+            let level = levels::get_level_2();
+            self.new_level(level, ctx);
+        }
+
+        if keyboard::is_key_pressed(ctx, KeyCode::R) {
+            let (width, height) = graphics::drawable_size(&ctx);
+            let level = levels::get_level_random((width as i64 - WINDOW_MARGIN.0) / CELL_TOTAL as i64, (height as i64 - WINDOW_MARGIN.1) / CELL_TOTAL as i64);
+            self.new_level(level, ctx);
+        }
+
+        if keyboard::is_key_pressed(ctx, KeyCode::E) {
+            self.new_level(HashMap::new(), ctx);
+        }
+
+        if keyboard::is_key_pressed(ctx, KeyCode::P) {
+            for ((x,y),_) in &self.alive {
+                print!("({},{}),", x, y);
+            }
+            io::stdout().flush().unwrap();
         }
 
         Ok(())
@@ -181,8 +248,10 @@ impl EventHandler for MainState {
                 (na::Point2::new(pos_x, pos_y),))?;
         }
 
-        graphics::draw(ctx, &self.assets.text1, (na::Point2::new(10.0, 10.0),))?;
-        graphics::draw(ctx, &self.assets.text2, (na::Point2::new(10.0, 40.0),))?;
+        graphics::draw(ctx, &self.assets.text_steps, (na::Point2::new(10.0, 10.0),))?;
+        graphics::draw(ctx, &self.assets.text_start, (na::Point2::new(10.0, 40.0),))?;
+        graphics::draw(ctx, &self.assets.text_added, (na::Point2::new(10.0, 70.0),))?;
+        graphics::draw(ctx, &self.assets.text_alive, (na::Point2::new(10.0, 100.0),))?;
 
         graphics::present(ctx)?;
         Ok(())
@@ -258,6 +327,39 @@ pub fn create_colored_cells(ctx: &mut Context) -> Vec<ggez::graphics::Mesh> {
     meshes
 }
 
+fn calculate_offset(cells: &HashMap<(i64,i64),usize>, ctx: &mut Context) -> (f32, f32) {
+    let dim = graphics::drawable_size(ctx);
+    let mut minx = std::f32::MAX;
+    let mut maxx = std::f32::MIN;
+    let mut miny = std::f32::MAX;
+    let mut maxy = std::f32::MIN;
+
+    for ((x,y),_) in cells {
+        let xf = *x as f32;
+        let yf = *y as f32;
+        minx = if xf < minx { xf } else { minx };
+        maxx = if xf > maxx { xf } else { maxx };
+        miny = if yf < miny { yf } else { miny };
+        maxy = if yf > maxy { yf } else { maxy };
+    }
+    
+    let diff_x = minx + (maxx - minx);
+    let diff_y = miny + (maxy - miny);
+    let unscaled_x = if diff_x > 0.0 { (dim.0 / CELL_TOTAL) - diff_x } else { (-dim.0 / CELL_TOTAL) + diff_x };
+    let unscaled_y = if diff_y > 0.0 { (dim.1 / CELL_TOTAL) - diff_y } else { (-dim.1 / CELL_TOTAL) + diff_y }; 
+
+
+
+    let offsetx = (unscaled_x / 2.0).floor() * CELL_TOTAL;
+    let offsety = (unscaled_y / 2.0).floor() * CELL_TOTAL;
+
+    println!("dif: {}, {}", diff_x, diff_y);
+    println!("unscaled: {}, {}", unscaled_x, unscaled_y);
+    println!("offset: {}, {}", offsetx, offsety);
+
+    (offsetx, offsety)
+}
+
 pub fn main() -> GameResult {
     let (width, height) = (1280.0, 720.0);
     let mut cb = ggez::ContextBuilder::new("super_simple", "yaya")
@@ -277,32 +379,10 @@ pub fn main() -> GameResult {
     graphics::set_window_title(ctx, "game of deth");
     mouse::set_cursor_hidden(ctx, true);
 
-    let mut rng = rand::thread_rng();
-    let num = rng.gen_range(2500, 5000);
     let (width, height) = graphics::drawable_size(&ctx);
-    let mut start = HashMap::new();
+    let start = levels::get_level_random((width as i64 - WINDOW_MARGIN.0) / CELL_TOTAL as i64, (height as i64 - WINDOW_MARGIN.1) / CELL_TOTAL as i64);
 
-    let mut minx = width;
-    let mut maxx = 0.0;
-    let mut miny = height;
-    let mut maxy = 0.0;
-
-    for _ in 0..num {
-        let x = rng.gen_range(0, (width as i64 - WINDOW_MARGIN.0) / CELL_TOTAL as i64);
-        let y = rng.gen_range(0, (height as i64 - WINDOW_MARGIN.1) / CELL_TOTAL as i64);
-        start.insert((x, y), 1);
-        let xf = x as f32;
-        let yf = y as f32;
-        minx = if xf < minx { xf } else { minx };
-        maxx = if xf > maxx { xf } else { maxx };
-        miny = if yf < miny { yf } else { miny };
-        maxy = if yf > maxy { yf } else { maxy };
-    }
-
-    let offsetx = ((width / CELL_TOTAL - (maxx - minx)) / 2.0).floor() * CELL_TOTAL;
-    let offsety = ((height / CELL_TOTAL - (maxy - miny)) / 2.0).floor() * CELL_TOTAL;
-
-    let state = &mut MainState::new(ctx, start, (offsetx, offsety))?;
-    state.play_music(ctx);
+    let state = &mut MainState::new(ctx, start)?;
+    state.play_music();
     event::run(ctx, event_loop, state)
 }
