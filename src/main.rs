@@ -1,4 +1,5 @@
 pub mod levels;
+use levels::{Level};
 
 use std::io;
 use std::io::Write; // <--- bring flush() into scope
@@ -56,7 +57,8 @@ impl Assets {
 }
 
 struct MainState {
-    pub alive: HashMap<(i64,i64), usize>,
+    pub alive: Level,
+    pub start: Level,
     pub is_running: bool,
     pub one_turn: bool,
     pub assets: Assets,
@@ -72,24 +74,25 @@ struct MainState {
 }
 
 impl MainState {
-    fn new(ctx: &mut Context, cells: HashMap<(i64,i64),usize>) -> GameResult<MainState> {
+    fn new(ctx: &mut Context, level: Level) -> GameResult<MainState> {
         let mut assets = Assets::new(ctx);
-        assets.text_start = graphics::Text::new((format!("Start: {}", cells.len()), assets.font, 20.0));
-        assets.text_alive = graphics::Text::new((format!("Alive: {}", cells.len()), assets.font, 20.0));
+        assets.text_start = graphics::Text::new((format!("Start: {}", level.len()), assets.font, 20.0));
+        assets.text_alive = graphics::Text::new((format!("Alive: {}", level.len()), assets.font, 20.0));
 
         let mut pressed_keys = vec![];
         let mut keys_up = HashMap::new();
         let mut keys_down = HashMap::new();
-        let keys = vec![KeyCode::Space,];
+        let keys = vec![KeyCode::Space, KeyCode::Right, KeyCode::P];
         for key in keys {
             pressed_keys.push((key, false));
             keys_up.insert(key, false);
             keys_down.insert(key, false);
         }
-        let offset = calculate_offset(&cells, ctx);
+        let offset = calculate_offset(&level, ctx);
 
         let state = MainState {
-            alive: cells, 
+            alive: level.clone(),
+            start: level,
             is_running: true, 
             one_turn: false,
             assets: assets,
@@ -123,40 +126,38 @@ impl MainState {
         self.time_steps = 0;
         self.camera = calculate_offset(&level, ctx);
 
-        self.alive = level;
-        println!("cam: {:?}", self.camera);
+        self.alive = level.clone();
+        self.start = level;
     }
 
     fn tick(&mut self) {
-        if self.is_running {
-            let mut possibles: HashMap<(i64,i64),u64> = HashMap::new();
-            for ((x,y),_) in &self.alive {
-                *possibles.entry((x - 1, y - 1)).or_insert(0)   += 1;
-                *possibles.entry((x - 1, *y)).or_insert(0)      += 1;
-                *possibles.entry((x - 1, y + 1)).or_insert(0)   += 1;
-                *possibles.entry((*x, y - 1)).or_insert(0)      += 1;
-                *possibles.entry((*x, y + 1)).or_insert(0)      += 1;
-                *possibles.entry((x + 1, y - 1)).or_insert(0)   += 1;
-                *possibles.entry((x + 1, *y)).or_insert(0)      += 1;
-                *possibles.entry((x + 1, y + 1)).or_insert(0)   += 1;
-            }
-            let mut next_gen: HashMap<(i64,i64),usize> = HashMap::new();
-            for ((x,y),value) in &possibles {
-                if self.alive.contains_key(&(*x,*y)) && (*value == 3 || *value == 2) {
-                    let old_value = self.alive[&(*x,*y)];
-                    let new_value = if old_value == 0 { 0 } else if old_value >= 15 { 15 } else { old_value + 1 };
-                    next_gen.insert((*x,*y), new_value);
-                } else if *value == 3 {
-                    next_gen.insert((*x,*y), 1);
-                }
-            }
-            self.alive = next_gen;
-            
-            self.time_steps += 1;
-            
-            self.assets.text_steps = graphics::Text::new((format!("Time steps: {}", self.time_steps), self.assets.font, 20.0));
-            self.assets.text_alive = graphics::Text::new((format!("Alive: {}", self.alive.len()), self.assets.font, 20.0));
+        let mut possibles: HashMap<(i64,i64),u64> = HashMap::new();
+        for ((x,y),_) in &self.alive {
+            *possibles.entry((x - 1, y - 1)).or_insert(0)   += 1;
+            *possibles.entry((x - 1, *y)).or_insert(0)      += 1;
+            *possibles.entry((x - 1, y + 1)).or_insert(0)   += 1;
+            *possibles.entry((*x, y - 1)).or_insert(0)      += 1;
+            *possibles.entry((*x, y + 1)).or_insert(0)      += 1;
+            *possibles.entry((x + 1, y - 1)).or_insert(0)   += 1;
+            *possibles.entry((x + 1, *y)).or_insert(0)      += 1;
+            *possibles.entry((x + 1, y + 1)).or_insert(0)   += 1;
         }
+        let mut next_gen: HashMap<(i64,i64),usize> = HashMap::new();
+        for ((x,y),value) in &possibles {
+            if self.alive.contains_key(&(*x,*y)) && (*value == 3 || *value == 2) {
+                let old_value = self.alive[&(*x,*y)];
+                let new_value = if old_value == 0 { 0 } else if old_value >= 15 { 15 } else { old_value + 1 };
+                next_gen.insert((*x,*y), new_value);
+            } else if *value == 3 {
+                next_gen.insert((*x,*y), 1);
+            }
+        }
+        self.alive = next_gen;
+        
+        self.time_steps += 1;
+        
+        self.assets.text_steps = graphics::Text::new((format!("Time steps: {}", self.time_steps), self.assets.font, 20.0));
+        self.assets.text_alive = graphics::Text::new((format!("Alive: {}", self.alive.len()), self.assets.font, 20.0));
     }
 }
 
@@ -165,7 +166,9 @@ impl EventHandler for MainState {
         const DESIRED_FPS: u32 = 15;
 
         while timer::check_update_time(ctx, DESIRED_FPS) { 
-            self.tick();
+            if self.is_running {
+                self.tick();
+            }
         }
 
         update_key_activity(ctx, self);
@@ -182,6 +185,12 @@ impl EventHandler for MainState {
         if self.keys_down[&KeyCode::Space] {
             self.is_running ^= true;
         }
+        if self.keys_down[&KeyCode::Right] {
+            if !self.is_running {
+                self.tick();
+            }
+        }
+
         if keyboard::is_key_pressed(ctx, KeyCode::W) {
             self.camera.1 += CAM_CONSTANT;
         }
@@ -195,17 +204,46 @@ impl EventHandler for MainState {
             self.camera.0 -= CAM_CONSTANT;
         }
 
+        // Level selection
         if keyboard::is_key_pressed(ctx, KeyCode::Key1) {
             let level = levels::get_level_1();
             self.new_level(level, ctx);
         }
-
         if keyboard::is_key_pressed(ctx, KeyCode::Key2) {
             let level = levels::get_level_2();
             self.new_level(level, ctx);
         }
+        if keyboard::is_key_pressed(ctx, KeyCode::Key3) {
+            let level = levels::get_level_3();
+            self.new_level(level, ctx);
+        }
+        if keyboard::is_key_pressed(ctx, KeyCode::Key4) {
+            let level = levels::get_level_4();
+            self.new_level(level, ctx);
+        }       
+        if keyboard::is_key_pressed(ctx, KeyCode::Key5) {
+            let level = levels::get_level_5();
+            self.new_level(level, ctx);
+        }
+        if keyboard::is_key_pressed(ctx, KeyCode::Key6) {
+            let level = levels::get_level_6();
+            self.new_level(level, ctx);
+        }        
+        if keyboard::is_key_pressed(ctx, KeyCode::Key7) {
+            let level = levels::get_level_7();
+            self.new_level(level, ctx);
+        }
+        if keyboard::is_key_pressed(ctx, KeyCode::Key8) {
+            let level = levels::get_level_8();
+            self.new_level(level, ctx);
+        }
+        if keyboard::is_key_pressed(ctx, KeyCode::Key9) {
+            let level = levels::get_level_9();
+            self.new_level(level, ctx);
+        }
 
-        if keyboard::is_key_pressed(ctx, KeyCode::R) {
+
+        if keyboard::is_key_pressed(ctx, KeyCode::Key0) {
             let (width, height) = graphics::drawable_size(&ctx);
             let level = levels::get_level_random((width as i64 - WINDOW_MARGIN.0) / CELL_TOTAL as i64, (height as i64 - WINDOW_MARGIN.1) / CELL_TOTAL as i64);
             self.new_level(level, ctx);
@@ -215,10 +253,15 @@ impl EventHandler for MainState {
             self.new_level(HashMap::new(), ctx);
         }
 
-        if keyboard::is_key_pressed(ctx, KeyCode::P) {
+        if keyboard::is_key_pressed(ctx, KeyCode::R) {
+            self.new_level(self.start.clone(), ctx);
+        }
+
+        if self.keys_down[&KeyCode::P] {
             for ((x,y),_) in &self.alive {
                 print!("({},{}),", x, y);
             }
+            print!("\n\n");
             io::stdout().flush().unwrap();
         }
 
@@ -343,21 +386,15 @@ fn calculate_offset(cells: &HashMap<(i64,i64),usize>, ctx: &mut Context) -> (f32
         maxy = if yf > maxy { yf } else { maxy };
     }
     
-    let diff_x = minx + (maxx - minx);
-    let diff_y = miny + (maxy - miny);
-    let unscaled_x = if diff_x > 0.0 { (dim.0 / CELL_TOTAL) - diff_x } else { (-dim.0 / CELL_TOTAL) + diff_x };
-    let unscaled_y = if diff_y > 0.0 { (dim.1 / CELL_TOTAL) - diff_y } else { (-dim.1 / CELL_TOTAL) + diff_y }; 
-
-
-
-    let offsetx = (unscaled_x / 2.0).floor() * CELL_TOTAL;
-    let offsety = (unscaled_y / 2.0).floor() * CELL_TOTAL;
-
-    println!("dif: {}, {}", diff_x, diff_y);
-    println!("unscaled: {}, {}", unscaled_x, unscaled_y);
-    println!("offset: {}, {}", offsetx, offsety);
-
-    (offsetx, offsety)
+    let mut diff_x = (minx + (maxx - minx) / 2.0).floor();
+    let mut diff_y = (miny + (maxy - miny) / 2.0).floor();
+    diff_x = if diff_x.is_finite() { diff_x } else { 0.0 };
+    diff_y = if diff_y.is_finite() { diff_y } else { 0.0 };
+    let dim_x = ((dim.0 / CELL_TOTAL) / 2.0).floor();
+    let dim_y = ((dim.1 / CELL_TOTAL) / 2.0).floor();
+    let offset_x = (dim_x - diff_x) * CELL_TOTAL;
+    let offset_y = (dim_y - diff_y) * CELL_TOTAL;
+    (offset_x, offset_y)
 }
 
 pub fn main() -> GameResult {
