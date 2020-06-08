@@ -50,9 +50,9 @@ impl EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
         self.current_state.update(ctx)
     }
-
+    
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
-        self.current_state.update(ctx)
+        self.current_state.draw(ctx)
     }
 }
 
@@ -76,6 +76,6 @@ pub fn main() -> GameResult {
     mouse::set_cursor_hidden(ctx, true);
 
     let state = &mut MainState::new(ctx)?;
-    state.play_music();
+    //state.play_music();
     event::run(ctx, event_loop, state)
 }

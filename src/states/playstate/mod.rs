@@ -2,11 +2,11 @@ pub mod levels;
 
 use levels::Level;
 use crate::assets::Assets;
-use crate::{util, CELL_MARGIN, WINDOW_MARGIN, CELL_TOTAL};
+use crate::{util, CELL_MARGIN, WINDOW_MARGIN, CELL_TOTAL, CAM_CONSTANT};
 
 use std::collections::HashMap;
 use std::io;
-use std::io::Write; // <--- bring flush() into scope
+use std::io::Write;
 
 use ggez::timer;
 use ggez::event::{EventHandler, KeyCode};
@@ -125,7 +125,6 @@ impl EventHandler for PlayState {
 
         util::update_key_activity(ctx, self);
         util::update_mouse_activity(ctx, self);
-        self.assets.screen.update(ctx);
 
         if self.mouse_down {
             if !self.alive.contains_key(&self.mouse_position) {
@@ -145,16 +144,16 @@ impl EventHandler for PlayState {
         }
 
         if keyboard::is_key_pressed(ctx, KeyCode::W) {
-            self.camera.1 += crate::CAM_CONSTANT;
+            self.camera.1 += CAM_CONSTANT;
         }
         if keyboard::is_key_pressed(ctx, KeyCode::A) {
-            self.camera.0 += crate::CAM_CONSTANT;
+            self.camera.0 += CAM_CONSTANT;
         }
         if keyboard::is_key_pressed(ctx, KeyCode::S) {
-            self.camera.1 -= crate::CAM_CONSTANT;
+            self.camera.1 -= CAM_CONSTANT;
         }
         if keyboard::is_key_pressed(ctx, KeyCode::D) {
-            self.camera.0 -= crate::CAM_CONSTANT;
+            self.camera.0 -= CAM_CONSTANT;
         }
 
         // Level selection
@@ -194,8 +193,6 @@ impl EventHandler for PlayState {
             let level = levels::get_level_9();
             self.new_level(level, ctx);
         }
-
-
         if keyboard::is_key_pressed(ctx, KeyCode::Key0) {
             let (width, height) = graphics::drawable_size(&ctx);
             let level = levels::get_level_random((width as i64 - WINDOW_MARGIN.0) / CELL_TOTAL as i64, (height as i64 - WINDOW_MARGIN.1) / CELL_TOTAL as i64);
@@ -221,7 +218,7 @@ impl EventHandler for PlayState {
         Ok(())
     }
 
-    fn draw(&mut self, ctx: &mut Context) -> GameResult {
+    fn draw(&mut self, ctx: &mut Context) -> GameResult{
         graphics::clear(ctx, [4.0/255.0, 17.0/255.0, 24.0/255.0, 1.0].into());
 
         let m = mouse::position(ctx);
@@ -233,8 +230,8 @@ impl EventHandler for PlayState {
             graphics::DrawMode::fill(), 
             Rect::new(0.0, 0.0 , CELL_TOTAL, CELL_TOTAL),
             Color::from_rgb(221, 227, 230))?;
-        graphics::draw(ctx, &hilight, (na::Point2::new(mx, my),))?;
 
+        graphics::draw(ctx, &hilight, (na::Point2::new(mx, my),))?;
         for ((x,y),gen) in &self.alive {
             let pos_x = *x as f32 * (CELL_TOTAL) + self.camera.0 + CELL_MARGIN / 2.0;
             let pos_y = *y as f32 * (CELL_TOTAL) + self.camera.1 + CELL_MARGIN / 2.0;
@@ -244,15 +241,12 @@ impl EventHandler for PlayState {
                 (na::Point2::new(pos_x, pos_y),))?;
         }
         
-        self.assets.screen.draw(ctx);
-        
         graphics::draw(ctx, &self.assets.text_steps, (na::Point2::new(10.0, 10.0),))?;
         graphics::draw(ctx, &self.assets.text_start, (na::Point2::new(10.0, 40.0),))?;
         graphics::draw(ctx, &self.assets.text_added, (na::Point2::new(10.0, 70.0),))?;
         graphics::draw(ctx, &self.assets.text_alive, (na::Point2::new(10.0, 100.0),))?;
-
-
         graphics::present(ctx)?;
+
         Ok(())
     }
 }

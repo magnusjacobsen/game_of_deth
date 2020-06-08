@@ -5,7 +5,7 @@ use ggez::input::mouse;
 use ggez::event::MouseButton;
 
 type Point = na::Point2<f32>;
-struct BBox {a: Point, b: Point, rect: Rect}
+struct BBox {a: Point, b: Point, _rect: Rect}
 
 struct MouseState {
     down: bool,
@@ -54,7 +54,7 @@ impl BBox {
     fn from_rect(rect: Rect) -> Self {
         let a = Point::new(rect.x, rect.y);
         let b = Point::new(rect.x + rect.w, rect.y + rect.h);
-        Self {a: a, b: b, rect: rect}
+        Self {a: a, b: b, _rect: rect}
     }
     
     fn is_inside(&self, p: &Point) -> bool {
