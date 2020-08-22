@@ -6,7 +6,7 @@ use ggez::graphics::{self, Color};
 
 use std::collections::HashMap;
 
-use crate::states::playstate::PlayState;
+use crate::state::playstate::PlayState;
 use crate::{CELL_WIDTH, CELL_TOTAL};
 
 pub fn update_key_activity(ctx: &mut Context, state: &mut PlayState) {

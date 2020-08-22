@@ -1,10 +1,9 @@
 pub mod gui;
-pub mod states;
+pub mod state;
 pub mod assets;
 pub mod util;
 
-use states::playstate::PlayState;
-use states::playstate::levels;
+use state::playstate::{PlayState, levels};
 
 use ggez;
 use ggez::event::{self, EventHandler};
