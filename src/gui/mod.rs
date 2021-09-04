@@ -1,4 +1,3 @@
-use ggez::nalgebra as na;
 use ggez::Context;
 use ggez::graphics::{self, Text, Font, Color, Rect, TextFragment};
 use ggez::input::mouse;
@@ -7,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 
 pub const UI_ID: usize = 0;
 
-type Point = na::Point2<f32>;
+type Point = glam::Vec2;
 struct BBox {a: Point, b: Point, _rect: Rect}
 
 pub trait Widget {

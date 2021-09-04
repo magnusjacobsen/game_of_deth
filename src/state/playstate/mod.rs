@@ -13,7 +13,7 @@ use ggez::event::{EventHandler, KeyCode};
 use ggez::{Context, GameResult};
 use ggez::graphics::{self, Color, Rect};
 use ggez::input::{keyboard, mouse};
-use ggez::nalgebra as na;
+use ggez::GameError;
 
 pub struct PlayState {
     pub alive: Level,
@@ -113,7 +113,7 @@ impl PlayState {
     }
 }
 
-impl EventHandler for PlayState {
+impl EventHandler<GameError> for PlayState {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
         const DESIRED_FPS: u32 = 15;
 
@@ -231,20 +231,20 @@ impl EventHandler for PlayState {
             Rect::new(0.0, 0.0 , CELL_TOTAL, CELL_TOTAL),
             Color::from_rgb(221, 227, 230))?;
 
-        graphics::draw(ctx, &hilight, (na::Point2::new(mx, my),))?;
+        graphics::draw(ctx, &hilight, (glam::Vec2::new(mx, my),))?;
         for ((x,y),gen) in &self.alive {
             let pos_x = *x as f32 * (CELL_TOTAL) + self.camera.0 + CELL_MARGIN / 2.0;
             let pos_y = *y as f32 * (CELL_TOTAL) + self.camera.1 + CELL_MARGIN / 2.0;
             graphics::draw(
                 ctx, 
                 &self.assets.colored_cells[*gen], 
-                (na::Point2::new(pos_x, pos_y),))?;
+                (glam::Vec2::new(pos_x, pos_y),))?;
         }
         
-        graphics::draw(ctx, &self.assets.text_steps, (na::Point2::new(10.0, 10.0),))?;
-        graphics::draw(ctx, &self.assets.text_start, (na::Point2::new(10.0, 40.0),))?;
-        graphics::draw(ctx, &self.assets.text_added, (na::Point2::new(10.0, 70.0),))?;
-        graphics::draw(ctx, &self.assets.text_alive, (na::Point2::new(10.0, 100.0),))?;
+        graphics::draw(ctx, &self.assets.text_steps, (glam::Vec2::new(10.0, 10.0),))?;
+        graphics::draw(ctx, &self.assets.text_start, (glam::Vec2::new(10.0, 40.0),))?;
+        graphics::draw(ctx, &self.assets.text_added, (glam::Vec2::new(10.0, 70.0),))?;
+        graphics::draw(ctx, &self.assets.text_alive, (glam::Vec2::new(10.0, 100.0),))?;
         graphics::present(ctx)?;
 
         Ok(())

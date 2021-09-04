@@ -12,6 +12,7 @@ use ggez::{Context, GameResult};
 use ggez::conf::WindowMode;
 use ggez::audio::{self, SoundSource};
 use ggez::input::mouse;
+use ggez::GameError;
 
 use std::path;
 use std::env;
@@ -23,7 +24,7 @@ const WINDOW_MARGIN: (i64, i64) = (600, 400);
 const CAM_CONSTANT: f32 = 8.0;
 
 struct MainState {
-    current_state: Box<dyn EventHandler>,
+    current_state: Box<dyn EventHandler<GameError>>,
     music: audio::Source,
 }
 
@@ -37,15 +38,15 @@ impl MainState {
         })
     }
 
-    fn play_music(&mut self) {
+    fn play_music(&mut self, ctx: &mut Context) {
         // "detached" sounds keep playing even after they are dropped
         self.music.set_volume(0.8);
         self.music.set_repeat(true);
-        let _ = self.music.play();
+        let _ = self.music.play(ctx);
     }
 }
 
-impl EventHandler for MainState {
+impl EventHandler<GameError> for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
         self.current_state.update(ctx)
     }
@@ -70,11 +71,10 @@ pub fn main() -> GameResult {
         cb = cb.add_resource_path(path);
     }
 
-    let (ctx, event_loop) = &mut cb.build()?;
-    graphics::set_window_title(ctx, "game of deth");
-    mouse::set_cursor_hidden(ctx, true);
-
-    let state = &mut MainState::new(ctx)?;
-    state.play_music();
+    let (mut ctx, event_loop) = cb.build()?;
+    graphics::set_window_title(&mut ctx, "game of deth");
+    mouse::set_cursor_hidden(&mut ctx, true);
+    let mut state = MainState::new(&mut ctx)?;
+    state.play_music(&mut ctx);
     event::run(ctx, event_loop, state)
 }
